@@ -2,8 +2,11 @@
 
 Baseline: `master` @ `3134f8780c`. Upstream: material-ui **PR #48743** (merged 2026-08-27).
 
-Utils duplicated at **`packages/x-internals/src/focusVisible/index.ts`** → import from `@mui/x-internals/focusVisible`.
-Exports: `getThemeFocusVisible`, `applyInsetFocusVisible`, `outsetFocusRing`, `applyChildrenFocusVisible`, type `FocusVisibleStyles`.
+`@mui/material` is already on **9.4.0** (`pnpm-workspace.yaml:26`), so `theme.focusVisible` exists at runtime
+**and** is typed on `Theme` — read it directly, no cast. The three var-writing helpers are still not reachable
+(9.4.0's `exports` map has no wildcard; `./styles` re-exports only the `FocusVisible` type), so they are
+duplicated at **`packages/x-internals/src/focusVisible/index.ts`** → import from `@mui/x-internals/focusVisible`.
+Exports: `applyInsetFocusVisible`, `outsetFocusRing`, `applyChildrenFocusVisible`.
 (Core PR exporting these publicly is separate — swap the import when it lands.)
 
 Grouped by **product**, not npm package: Data Grid = community + pro + premium, same for Scheduler / Pickers / Charts.
@@ -14,33 +17,40 @@ Grouped by **product**, not npm package: Data Grid = community + pro + premium, 
 
 ## Patterns
 
-`theme.focusVisible` is `undefined` on `@mui/material` v7 and on v9 before the ring ships, so every call site
-must no-op by default. `getThemeFocusVisible` returns `undefined` for both `undefined` and `false`.
+`theme.focusVisible` is `undefined` on the older `@mui/material` versions X peers (`^7.3.0`, `^9.0.0`–`9.3.x`)
+and `false` when a consumer opts out, so every call site must degrade to today's appearance in both cases —
+zero visual diff until someone opts in. Core's own idiom is the truthiness check
+(`ButtonBase.js:76`, `Tab.js:66`); X reads the same, with the operator picked per role (see P1 and P3).
 
 **P1 — replace the ring, keep today's as fallback.** Default for a plain `outline`-only focus block.
 
 ```ts
-import { getThemeFocusVisible } from '@mui/x-internals/focusVisible';
-
-})(({ theme }) => {
-  const focusVisible = getThemeFocusVisible(theme);
-  return {
-    '&:focus-visible': focusVisible ?? {
-      outline: `2px solid ${(theme.vars || theme).palette.primary.main}`,
-      outlineOffset: 2,
-    },
-  };
-});
+'&:focus-visible': theme.focusVisible || {
+  outline: `2px solid ${(theme.vars || theme).palette.primary.main}`,
+  outlineOffset: 2,
+},
 ```
 
 Replace, never merge — merging a themed `outline` over a hard-coded one double-paints.
+
+**`||`, not `??`.** `theme.focusVisible` has three states, and X's fallback must catch two of them:
+
+| Value       | Meaning                                                 | X renders        |
+| ----------- | ------------------------------------------------------- | ---------------- |
+| `undefined` | not opted in (incl. every `@mui/material` before 9.4.0) | today's ring     |
+| object      | opted in                                                | themed ring      |
+| `false`     | consumer opted out of core's auto-ring                  | **today's ring** |
+
+`false` means "don't hand me a ring I didn't ask for" — it must not strip the ring X already draws, which
+would be an a11y regression (WCAG 2.4.7). `??` only catches `undefined`, so it would emit
+`'&:focus-visible': false` and drop the ring entirely. `||` catches both.
 
 **P2 — ring + extra properties.** Focus block also sets background/opacity: keep those, swap only the ring.
 
 ```ts
 '&:focus-visible': {
   backgroundColor: getCellFocusBackground(theme),
-  ...(focusVisible ?? { outline: `2px solid …`, outlineOffset: 2 }),
+  ...(theme.focusVisible || { outline: `2px solid …`, outlineOffset: 2 }),
 },
 ```
 
@@ -49,12 +59,17 @@ Replace, never merge — merging a themed `outline` over a hard-coded one double
 today's `outlineOffset: -2`.
 
 ```ts
-...(focusVisible && applyInsetFocusVisible(1)),
-'&:focus-visible': focusVisible ?? { /* today's inset ring */ },
+import { applyInsetFocusVisible } from '@mui/x-internals/focusVisible';
+
+...(theme.focusVisible && applyInsetFocusVisible(1)),
+'&:focus-visible': theme.focusVisible || { /* today's inset ring */ },
 ```
 
+Note the two operators differ on purpose: the **guard** is `&&` (write the inset vars only when there _is_ a
+themed ring — X's own fallback ring already hard-codes its inset), the **fallback** is `||`.
+
 **P4 — outset guard.** Only when the root sits inside a core clip-prone component (Tab, MenuItem, …) whose
-inset vars would inherit down. `...(focusVisible && outsetFocusRing)`.
+inset vars would inherit down. `...(theme.focusVisible && outsetFocusRing)`.
 
 ---
 
