@@ -18,7 +18,7 @@ Exports: `applyInsetFocusVisible`, `outsetFocusRing`, `applyChildrenFocusVisible
 | Excluded     | Scheduler (+ premium), Chat                                            | §5, research kept for when they resume |
 
 Suggested order: **Pickers → Tree View → Data Grid**. Pickers has concrete defects that land on their own
-(§1a) and two real a11y gaps that need no policy call (§1b). Tree View is three edits but settles the
+(§1a) and three real a11y gaps that need no policy call (§1b). Tree View is three edits but settles the
 roving-tabindex question (§2), which Data Grid's largest decision then depends on (§3a).
 
 **In scope:** 26 rows — Pickers 9 (§1), Tree View 3 (§2), Data Grid 14 (§3). Everything else is deferred.
@@ -93,7 +93,7 @@ inset vars would inherit down. `...(theme.focusVisible && outsetFocusRing)`.
 # 1. Date Pickers — `x-date-pickers` + `-pro`
 
 **Start here.** Four components already inherit a core ring with no X change, so their appearance moves the
-moment a consumer opts in — and two more get nothing at all.
+moment a consumer opts in — and three more get nothing at all.
 
 ### 1a. Already wired by core — verify, and resolve the `outline` conflict
 
