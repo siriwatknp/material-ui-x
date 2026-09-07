@@ -21,8 +21,12 @@ Suggested order: **Pickers → Tree View → Data Grid**. Pickers has concrete d
 (§1a) and two real a11y gaps that need no policy call (§1b). Tree View is three edits but settles the
 roving-tabindex question (§2), which Data Grid's largest decision then depends on (§3a).
 
-**Totals in scope:** 15 rings (A), 11 suppressions (B) — 26 of the 63 locations.
-Deferred/excluded: 24 rings, 3 suppressions, 10 SVG indicators.
+**In scope:** 26 rows — Pickers 9 (§1), Tree View 3 (§2), Data Grid 14 (§3). Everything else is deferred.
+Of the Pickers 9, only 7 are work: 4 already wired by core and needing verification, 3 genuine gaps.
+
+The audit's original A/B/C labels (own ring / suppresses / SVG) are dropped from here on: they classify by
+CSS pattern, but the thing that matters is whether a themed ring actually reaches the element. Several
+`outline: none` rules turn out to be inert — see §1c.
 
 ---
 
@@ -115,23 +119,27 @@ _This is derived from specificity, not yet observed — render-verify it first._
   keeps the marker and lets the themed ring do its job.
 - **(b)** Suppress core's root ring on the day cells and keep drawing focus manually. Loses theming.
 
-### 1b. Real gaps — plain `<button>`, no core inheritance
+### 1b. Real gaps — focusable, no ring, no core inheritance
 
-Neither is a `ButtonBase`, and both zero out `outline`. `theme.focusVisible` will not reach them; these are
-genuine WCAG 2.4.7 gaps today, independent of the theme work.
+None of these is a `ButtonBase`, so `theme.focusVisible` cannot reach them. All three are keyboard-reachable
+with `outline` zeroed — genuine WCAG 2.4.7 gaps today, independent of the theme work, and the natural place
+to wire the themed ring.
 
-| ☐   | Component             | Location                                                      | Note                                                                                                                                                |
-| --- | --------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `YearCalendarButton`  | `x-date-pickers/src/YearCalendar/YearCalendarButton.tsx:67`   | `styled('button')` with `outline: 0` at `:61`. Focus is a background using `action.focusOpacity`.                                                   |
-| ☐   | `MonthCalendarButton` | `x-date-pickers/src/MonthCalendar/MonthCalendarButton.tsx:69` | Same, `outline: 0` at `:63` — but uses `action.**hoverOpacity**` where its sibling uses `focusOpacity`. Pre-existing inconsistency; fix while here. |
+| ☐   | Component              | Location                                                      | Note                                                                                                                                                                                               |
+| --- | ---------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ☐   | `YearCalendarButton`   | `x-date-pickers/src/YearCalendar/YearCalendarButton.tsx:67`   | `styled('button')` with `outline: 0` at `:61`. Focus is a background using `action.focusOpacity`.                                                                                                  |
+| ☐   | `MonthCalendarButton`  | `x-date-pickers/src/MonthCalendar/MonthCalendarButton.tsx:69` | Same, `outline: 0` at `:63` — but uses `action.**hoverOpacity**` where its sibling uses `focusOpacity`. Pre-existing slip; flag, don't silently fix (the values differ, so it is a visual change). |
+| ☐   | `MuiClock` / `Wrapper` | `x-date-pickers/src/TimeClock/Clock.tsx:107`                  | `styled('div')` rendered with **`tabIndex={0}`** (`:449`) and `'&:focus': { outline: 'none' }`. A focusable element with its only indicator removed — the clearest 2.4.7 failure in the package.   |
 
-### 1c. B — suppressions, verify only
+### 1c. No action — inert with respect to `theme.focusVisible`
 
-| ☐   | Slot                   | Location                                                                                                                               |
-| --- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `MuiClock` / `Wrapper` | `x-date-pickers/src/TimeClock/Clock.tsx:111`                                                                                           |
-| ☐   | `PickersSectionList`   | `x-date-pickers/src/PickersSectionList/PickersSectionList.tsx:21`, `:40`                                                               |
-| ☐   | `MuiPickersInputBase`  | `x-date-pickers/src/PickersTextField/PickersInputBase/PickersInputBase.tsx:83`, `:152` — ring delegated to `:focus-within` on the root |
+These zero out the **browser default** outline; nothing routes a themed ring to them, so they neither swallow
+one nor block one. Listed to record that they were checked, not as work.
+
+| Slot                                                           | Location                                                                               | Why inert                                                                                                                                                                                                                                                 |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PickersSectionList` / `Root` + `SectionContent`               | `x-date-pickers/src/PickersSectionList/PickersSectionList.tsx:21`, `:40`               | Inner contenteditable spans of a date field. A ring per date section would be wrong; the field root owns the indicator.                                                                                                                                   |
+| `MuiPickersInputBase` / `SectionsContainer` + `SectionContent` | `x-date-pickers/src/PickersTextField/PickersInputBase/PickersInputBase.tsx:83`, `:152` | Same — and text fields are outside `focusVisible`'s remit entirely. PR #48743 covers the `ButtonBase` family, clip-prone families and slot-drawn controls; no `Input`/`TextField` is in scope, because fields signal focus with their border, not a ring. |
 
 Related: clear-button reveal on `:focus-within` at `x-date-pickers/src/internals/components/PickerFieldUI.tsx:272`. Leave.
 
