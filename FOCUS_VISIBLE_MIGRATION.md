@@ -9,9 +9,20 @@ duplicated at **`packages/x-internals/src/focusVisible/index.ts`** → import fr
 Exports: `applyInsetFocusVisible`, `outsetFocusRing`, `applyChildrenFocusVisible`.
 (Core PR exporting these publicly is separate — swap the import when it lands.)
 
-Grouped by **product**, not npm package: Data Grid = community + pro + premium, same for Scheduler / Pickers / Charts.
+## Scope
 
-**Totals:** 39 custom rings (A), 14 suppressions (B), 10 SVG indicators (C).
+| Phase        | Packages                                                               | Status                                 |
+| ------------ | ---------------------------------------------------------------------- | -------------------------------------- |
+| **In scope** | Data Grid (community + pro + premium), Date Pickers (+ pro), Tree View | §1–§3                                  |
+| Later        | Charts (+ pro, premium)                                                | §4, parked                             |
+| Excluded     | Scheduler (+ premium), Chat                                            | §5, research kept for when they resume |
+
+Suggested order: **Pickers → Tree View → Data Grid**. Pickers has concrete defects that land on their own
+(§1a) and two real a11y gaps that need no policy call (§1b). Tree View is three edits but settles the
+roving-tabindex question (§2), which Data Grid's largest decision then depends on (§3a).
+
+**Totals in scope:** 15 rings (A), 11 suppressions (B) — 26 of the 63 locations.
+Deferred/excluded: 24 rings, 3 suppressions, 10 SVG indicators.
 
 ---
 
@@ -73,104 +84,83 @@ inset vars would inherit down. `...(theme.focusVisible && outsetFocusRing)`.
 
 ---
 
-# 1. Chat — `x-chat`
+# Part I — In scope
 
-9 rings, all `2px solid palette.primary.main`. **Lowest risk, start here** — every block is identical and
-nothing is clip-prone except two.
+# 1. Date Pickers — `x-date-pickers` + `-pro`
 
-| ☐   | Slot                                             | Location                                                                        | Today                              | Action                                                                                                               |
-| --- | ------------------------------------------------ | ------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `MuiChatCodeBlock` / `CopyButton`                | `src/ChatCodeBlock/ChatCodeBlock.tsx:103`                                       | `2px primary.main`, offset `2`     | **P1**                                                                                                               |
-| ☐   | `MuiChatComposer` / `AttachButton`               | `src/ChatComposer/ChatComposerAttachButton.tsx:47`                              | same                               | **P1**                                                                                                               |
-| ☐   | `MuiChatComposer` / `SendButton`                 | `src/ChatComposer/ChatComposerSendButton.tsx:47`                                | same                               | **P1**                                                                                                               |
-| ☐   | `MuiChatConfirmation` / `CancelButton`           | `src/ChatConfirmation/ChatConfirmation.tsx:114`                                 | same                               | **P1**                                                                                                               |
-| ☐   | `MuiChatConfirmation` / `ConfirmButton`          | `src/ChatConfirmation/ChatConfirmation.tsx:141`                                 | `2px **warning.main**`, offset `2` | **Decision** — only non-primary ring in X. Keep `warning.main` on the destructive button, or let the theme ring win? |
-| ☐   | `MuiChatSuggestions` / `Item`                    | `src/ChatSuggestions/ChatSuggestions.tsx:55`                                    | `2px primary.main`, offset `2`     | **P1**                                                                                                               |
-| ☐   | `ChatToolPartSectionCopyButton` _(no name/slot)_ | `src/ChatMessage/ChatMessageContent.tsx:826`                                    | ring + `opacity: 1`                | **P2** — keep `opacity: 1`. Also consider giving it a `name`/`slot`.                                                 |
-| ☐   | `MuiChatConversationList` / `Item`               | `src/ChatConversationList/ChatConversationList.tsx:163` (root resets at `:147`) | ring, offset **`-2`**              | **P3** — inset, `applyInsetFocusVisible(1)`                                                                          |
-| ☐   | `MuiChatMessage` / `Root`                        | `src/ChatMessage/ChatMessage.tsx:154`                                           | ring, offset `-2`, `borderRadius`  | **P3** — comment already states the scroller-clip rationale; that's exactly what P3 encodes                          |
+**Start here.** Four components already inherit a core ring with no X change, so their appearance moves the
+moment a consumer opts in — and two more get nothing at all.
 
-**B (suppression), verify only:**
+### 1a. Already wired by core — verify, and resolve the `outline` conflict
 
-| ☐   | Slot                           | Location                                       | Note                                                                                                                                                    |
-| --- | ------------------------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `MuiChatComposer` / `TextArea` | `src/ChatComposer/ChatComposerTextArea.tsx:41` | `outline: 'none'`; ring delegated to `:focus-within` on the composer (`ChatComposer.tsx:88`, `:109`). Decide whether the wrapper ring adopts the theme. |
+These are `styled(ButtonBase)` / `styled(MenuItem)`, so core's variant applies to them today. Nothing to
+_add_; the work is confirming what it looks like and fixing where it fights existing styles.
+
+| ☐   | Slot                                          | Location                                                                              | What happens                                                                                                                                                                                                    |
+| --- | --------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ☐   | `MuiPickerDay` / `Root`                       | `x-date-pickers/src/PickerDay/PickerDay.tsx:46` is `styled(ButtonBase)`               | Gets core's root ring (PickerDay does not set the private `internalDisabledThemeFocusVisible` gate, so the variant is live). **Conflicts with the "today" marker** at `:138` — both write `outline`. See below. |
+| ☐   | `MuiDateRangePickerDay` / `Root`              | `x-date-pickers-pro/src/DateRangePickerDay/DateRangePickerDay.tsx:199`                | Same conflict, "today" outline at `:243`. Also `zIndex: 1` + `isolation: 'isolate'` + `::before`/`::after` range pseudo-elements at `:205` that an outset ring will interact with.                              |
+| ☐   | `MuiDigitalClock` / `Item`                    | `x-date-pickers/src/DigitalClock/DigitalClock.tsx:88` is `styled(MenuItem)`           | MenuItem is a core clip-prone family → gets core's inset ring, **and** keeps painting its own `.Mui-focusVisible` background (`:92`). Both render — verify they read as one state, not two.                     |
+| ☐   | `MuiMultiSectionDigitalClockSection` / `Item` | `x-date-pickers/src/MultiSectionDigitalClock/MultiSectionDigitalClockSection.tsx:116` | Same as above (`:120`).                                                                                                                                                                                         |
+
+**The "today" conflict, precisely.** `outline` is a single CSS property, so the two rules cannot both
+render — one overrides the other. Core's rule is `&.Mui-focusVisible` → `.css-buttonbase.Mui-focusVisible`,
+specificity (0,2,0). PickerDay's "today" variant lands on its own class, (0,1,0). **Core wins**, so a
+keyboard-focused "today" cell shows the focus ring and silently loses its today marker — exactly when a
+keyboard user needs it most.
+
+_This is derived from specificity, not yet observed — render-verify it first._ Then decide:
+
+- **(a)** Move "today" off `outline` (to `boxShadow` or a `::after`) so both indicators coexist. _Recommended_ —
+  keeps the marker and lets the themed ring do its job.
+- **(b)** Suppress core's root ring on the day cells and keep drawing focus manually. Loses theming.
+
+### 1b. Real gaps — plain `<button>`, no core inheritance
+
+Neither is a `ButtonBase`, and both zero out `outline`. `theme.focusVisible` will not reach them; these are
+genuine WCAG 2.4.7 gaps today, independent of the theme work.
+
+| ☐   | Component             | Location                                                      | Note                                                                                                                                                |
+| --- | --------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ☐   | `YearCalendarButton`  | `x-date-pickers/src/YearCalendar/YearCalendarButton.tsx:67`   | `styled('button')` with `outline: 0` at `:61`. Focus is a background using `action.focusOpacity`.                                                   |
+| ☐   | `MonthCalendarButton` | `x-date-pickers/src/MonthCalendar/MonthCalendarButton.tsx:69` | Same, `outline: 0` at `:63` — but uses `action.**hoverOpacity**` where its sibling uses `focusOpacity`. Pre-existing inconsistency; fix while here. |
+
+### 1c. B — suppressions, verify only
+
+| ☐   | Slot                   | Location                                                                                                                               |
+| --- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| ☐   | `MuiClock` / `Wrapper` | `x-date-pickers/src/TimeClock/Clock.tsx:111`                                                                                           |
+| ☐   | `PickersSectionList`   | `x-date-pickers/src/PickersSectionList/PickersSectionList.tsx:21`, `:40`                                                               |
+| ☐   | `MuiPickersInputBase`  | `x-date-pickers/src/PickersTextField/PickersInputBase/PickersInputBase.tsx:83`, `:152` — ring delegated to `:focus-within` on the root |
+
+Related: clear-button reveal on `:focus-within` at `x-date-pickers/src/internals/components/PickerFieldUI.tsx:272`. Leave.
 
 ---
 
-# 2. Scheduler — `x-scheduler` + `x-scheduler-premium`
+# 2. Tree View — `x-tree-view`
 
-15 entries. Two shapes: **buttons** (real outline rings) and **grid cells** (background-only, no ring).
+**Decision needed first:** focus is a **background** keyed off roving-tabindex `[data-focused]`.
+`:focus-visible` and `.Mui-focusVisible` never match here, so adoption means either wiring
+`theme.focusVisible` into the `[data-focused]` selector, or leaving Tree View on its own vocabulary.
 
-Shared helper — `x-scheduler/src/internals/utils/tokens.ts:362`:
+Settle this before Data Grid — the same question governs grid cells (§3a) and `GridFormulaEditable` (§3c),
+and (when they resume) `ResourcesTreeItem` in Scheduler (§5b).
 
-```ts
-export const getCellFocusBackground = (theme: Theme) =>
-  theme.alpha((theme.vars || theme).palette.primary.light, 0.12);
-```
-
-### 2a. Buttons — real rings
-
-| ☐   | Slot                                             | Location                                                                                                          | Today                                                                                  | Action                                                                              |
-| --- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| ☐   | `MuiEventCalendar` / `MiniCalendarDayButton`     | `x-scheduler/src/event-calendar/mini-calendar/MiniCalendar.tsx:130`                                               | `2px primary.main`, offset `2`                                                         | **P1**                                                                              |
-| ☐   | `MuiEventCalendar` / `MonthViewCellNumberButton` | `x-scheduler/src/month-view/month-view-row/MonthViewCell.tsx:121`                                                 | ring offset `2` + `getCellFocusBackground` + `:focus-visible:hover` override at `:126` | **P2** — keep background + the hover override                                       |
-| ☐   | `MuiEventCalendar` / `DayTimeGridHeaderCell`     | `x-scheduler/src/internals/components/day-time-grid/DayTimeGrid.tsx:171`                                          | ring offset `-2` + `borderRadius`                                                      | **P3**                                                                              |
-| ☐   | `MuiEventCalendar` / `DayTimeGridHeaderButton`   | `x-scheduler/src/internals/components/day-time-grid/DayTimeGrid.tsx:217`                                          | ring offset `-2` + `borderRadius`                                                      | **P3**                                                                              |
-| ☐   | `MuiEventCalendar` / `ToolbarButton`             | `x-scheduler/src/internals/components/event-toolbar/EventToolbar.tsx:41`                                          | ring offset `-2`                                                                       | **P3**                                                                              |
-| ☐   | `MuiEventCalendar` / `MonthViewHeaderCell`       | `x-scheduler/src/month-view/MonthView.tsx:81`                                                                     | `outline: 'none'` + `boxShadow: inset 0 0 0 2px primary.main`                          | **P3** — the `boxShadow` hack becomes unnecessary; the themed outline insets itself |
-| ☐   | `MuiEventTimeline` / `TitleCell`                 | `x-scheduler-premium/src/event-timeline-premium/content/timeline-title-cell/EventTimelinePremiumTitleCell.tsx:55` | same `boxShadow` hack                                                                  | **P3** — same as above                                                              |
-
-### 2b. Grid cells — background only, **no ring today**
-
-**Decision needed for the whole group:** when `theme.focusVisible` is set, do these gain an actual ring, or
-stay background-only? A themed ring here changes the scheduler's visual language; leaving them out means
-`focusVisible: true` gives an inconsistent calendar.
-
-| ☐   | Slot                                               | Location                                                                                     |
-| --- | -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| ☐   | `MuiEventCalendar` / `MonthViewCell`               | `x-scheduler/src/month-view/month-view-row/MonthViewCell.tsx:59`                             |
-| ☐   | `MuiEventCalendar` / `DayTimeGridAllDayEventsCell` | `x-scheduler/src/internals/components/day-time-grid/DayGridCell.tsx:40`                      |
-| ☐   | `MuiEventCalendar` / `DayTimeGridColumn`           | `x-scheduler/src/internals/components/day-time-grid/TimeGridColumn.tsx:34`                   |
-| ☐   | `MuiEventTimeline` / `EventsCell`                  | `x-scheduler-premium/src/event-timeline-premium/content/EventTimelinePremiumContent.tsx:230` |
-
-All four are byte-identical: `'&:focus-visible': { outline: 'none', backgroundColor: getCellFocusBackground(theme) }`.
-If they adopt, the cleanest move is to thread the decision through `getCellFocusBackground`'s module so it stays one edit.
-
-### 2c. Events — ring color from a per-event CSS var
-
-**Decision needed:** these ring off `var(--event-surface-accent)` so the indicator reads against the event's own
-color. `applyChildrenFocusVisible(color)` is the core-sanctioned way to keep that while still honoring the theme —
-set the shadow slot per event and let the outline come from the theme.
-
-| ☐   | Slot                                 | Location                                                                           | Today                                                                                |
-| --- | ------------------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| ☐   | `MuiEventCalendar` / `EventItemCard` | `x-scheduler/src/internals/components/event/event-item/EventItem.tsx:41`           | `2px var(--event-surface-accent)`, offset `1`                                        |
-| ☐   | `MuiEventCalendar` / `DayGridEvent`  | `x-scheduler/src/internals/components/event/day-grid-event/DayGridEvent.tsx:63`    | same                                                                                 |
-| ☐   | `TimeGridEvent` root _(no slot)_     | `x-scheduler/src/internals/components/event/time-grid-event/TimeGridEvent.tsx:159` | same, offset `2`                                                                     |
-| ☐   | `EventTimelinePremiumEvent`          | `x-scheduler-premium/…/timeline-event/EventTimelinePremiumEvent.tsx:60`            | `[data-dependency-drop-target]` — **not focus**, listed so it isn't mistaken for one |
-
-### 2d. `clip-path` — the one case core does not model
-
-| ☐   | Location                                                      | Note                                                                                                                                                                                                                                                                       |
-| --- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `x-scheduler/src/internals/components/event/arrowClips.ts:11` | `getArrowFocusVisibleStyles` drops `clipPath` on focus because the chevron clip eats the outline. `applyInsetFocusVisible` only solves `overflow: hidden`. **Feed this into the core PR** — either core grows a clip-path story, or X keeps this escape hatch permanently. |
-
-### 2e. Related, not `:focus-visible`
-
-| ☐   | Slot                                     | Location                                                             | Note                                                                  |
-| --- | ---------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| ☐   | `MuiEventCalendar` / `ResourcesTreeItem` | `x-scheduler/src/event-calendar/resources-tree/ResourcesTree.tsx:56` | `[data-focused]` background — follows whatever Tree View decides (§5) |
+| ☐   | Slot                         | Location                                           | Today                                                                                                                                       |
+| --- | ---------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| ☐   | `MuiTreeItem` / `Content`    | `src/TreeItem/TreeItem.tsx:66` and `:88`           | `[data-focused]` → `action.focus`; `[data-selected][data-focused]` → blended `selectedOpacity + focusOpacity`                               |
+| ☐   | `MuiTreeItem` / `LabelInput` | `src/TreeItemLabelInput/TreeItemLabelInput.tsx:17` | `'&:focus': { outline: '1px solid primary.main' }` — the only real ring in the package. **P1**, but note it's `:focus` not `:focus-visible` |
+| ☐   | `MuiTreeItem` / `Root`       | `src/TreeItem/TreeItem.tsx:34`                     | `outline: 0` — verify it doesn't swallow the item ring                                                                                      |
 
 ---
 
 # 3. Data Grid — `x-data-grid` + `-pro` + `-premium`
 
-The grid has its **own token indirection**: `--DataGrid-t-color-interactive-focus`, defaulted from
-`palette.primary.main` at `x-data-grid/src/material/variables.ts:66`. It is already themeable — just not via
-`theme.focusVisible`.
+Largest surface, and the one whose decision has the widest blast radius. The grid has its **own token
+indirection**: `--DataGrid-t-color-interactive-focus`, defaulted from `palette.primary.main` at
+`x-data-grid/src/material/variables.ts:66`. It is already themeable — just not via `theme.focusVisible`.
 
-### 3a. Core decision for the whole package
+### 3a. Strategy decision for the whole package
 
 The cell/header ring uses `:focus` / `:focus-within`, **not** `:focus-visible`, because the grid's roving
 tabindex must show the ring on click-focus too. Options:
@@ -199,74 +189,25 @@ tabindex must show the ring on click-focus too. Options:
 
 ### 3c. B — suppressions, verify each still makes sense
 
-| ☐   | Slot                                        | Location                                                                       | Note                                                                               |
-| --- | ------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| ☐   | `MuiDataGrid` / `Root`                      | `x-data-grid/src/components/containers/GridRootStyles.ts:184`                  | `outline: 'none'` on the grid root                                                 |
-| ☐   | `MuiDataGrid` / `LongTextCellCornerButton`  | `x-data-grid/src/components/cell/GridLongTextCell.tsx:88`                      | `'&:focus-visible': { outline: 'none' }` — swallows a themed ring                  |
-| ☐   | `MuiDataGrid` / `EditLongTextCellTextarea`  | `x-data-grid/src/components/cell/GridEditLongTextCell.tsx:43`                  | ring delegated to the editing cell                                                 |
-| ☐   | `MuiDataGrid` / `PanelWrapper`              | `x-data-grid/src/components/panel/GridPanelWrapper.tsx:32`                     | `'&:focus': { outline: 0 }`                                                        |
-| ☐   | `ScrollbarVertical` / `ScrollbarHorizontal` | `x-data-grid/src/components/virtualization/GridVirtualScrollbar.tsx:68`, `:85` | `// Disable focus-visible style, it's a scrollbar.` — intentional, leave           |
-| ☐   | `GridEditMultiSelectChips`                  | `x-data-grid-pro/src/components/cell/GridEditMultiSelectCell.tsx:101`          | `outline: 'none', // let the grid cell handle the focus ring` — intentional, leave |
-| ☐   | `GridFormulaEditable`                       | `x-data-grid-premium/src/components/GridFormulaEditable.tsx:68` + `:145`       | `outline: 'none'`; focus is `[data-focused="true"]` background                     |
+| ☐   | Slot                                        | Location                                                                       | Note                                                                                     |
+| --- | ------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| ☐   | `MuiDataGrid` / `Root`                      | `x-data-grid/src/components/containers/GridRootStyles.ts:184`                  | `outline: 'none'` on the grid root                                                       |
+| ☐   | `MuiDataGrid` / `LongTextCellCornerButton`  | `x-data-grid/src/components/cell/GridLongTextCell.tsx:88`                      | `'&:focus-visible': { outline: 'none' }` — swallows a themed ring                        |
+| ☐   | `MuiDataGrid` / `EditLongTextCellTextarea`  | `x-data-grid/src/components/cell/GridEditLongTextCell.tsx:43`                  | ring delegated to the editing cell                                                       |
+| ☐   | `MuiDataGrid` / `PanelWrapper`              | `x-data-grid/src/components/panel/GridPanelWrapper.tsx:32`                     | `'&:focus': { outline: 0 }`                                                              |
+| ☐   | `ScrollbarVertical` / `ScrollbarHorizontal` | `x-data-grid/src/components/virtualization/GridVirtualScrollbar.tsx:68`, `:85` | `// Disable focus-visible style, it's a scrollbar.` — intentional, leave                 |
+| ☐   | `GridEditMultiSelectChips`                  | `x-data-grid-pro/src/components/cell/GridEditMultiSelectCell.tsx:101`          | `outline: 'none', // let the grid cell handle the focus ring` — intentional, leave       |
+| ☐   | `GridFormulaEditable`                       | `x-data-grid-premium/src/components/GridFormulaEditable.tsx:68` + `:145`       | `outline: 'none'`; focus is `[data-focused="true"]` background — follows the §2 decision |
 
 Not focus — `[data-drag-over="true"]` outlines at `GridChartsPanelDataBody.tsx:104` and `GridPivotPanelBody.tsx:95`. Leave.
 
 ---
 
-# 4. Date Pickers — `x-date-pickers` + `-pro`
+# Part II — Later
 
-**Highest urgency: this package regresses on core release even if nothing else is touched.**
+# 4. Charts — `x-charts` + `-pro` + `-premium`
 
-### 4a. Collisions — components that already inherit core's ring
-
-| ☐   | Slot                                          | Location                                                                              | Problem                                                                                                                                                                                          |
-| --- | --------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ☐   | `MuiPickerDay` / `Root`                       | `x-date-pickers/src/PickerDay/PickerDay.tsx:46` is `styled(ButtonBase)`               | Gets core's root ring on release. But `outline` is already the **"today" marker** (`:138`, `1px solid text.secondary`, offset `-1`) → **double outline**. Focus itself is a background at `:85`. |
-| ☐   | `MuiDateRangePickerDay` / `Root`              | `x-date-pickers-pro/src/DateRangePickerDay/DateRangePickerDay.tsx:199`                | Same collision, "today" outline at `:243`. Also `zIndex: 1` + `isolation: 'isolate'` + `::before`/`::after` range pseudo-elements at `:205` that an outset ring will interact with.              |
-| ☐   | `MuiDigitalClock` / `Item`                    | `x-date-pickers/src/DigitalClock/DigitalClock.tsx:88` is `styled(MenuItem)`           | MenuItem is a core clip-prone family → gets core's inset ring, **and** keeps painting its own `.Mui-focusVisible` background (`:92`). Stacks.                                                    |
-| ☐   | `MuiMultiSectionDigitalClockSection` / `Item` | `x-date-pickers/src/MultiSectionDigitalClock/MultiSectionDigitalClockSection.tsx:116` | Same as above (`:120`).                                                                                                                                                                          |
-
-**Decision for the two day components:** move "today" off `outline` (to `boxShadow` or a `::after`), or suppress
-the core root ring there and keep drawing focus manually?
-
-### 4b. Gap — plain `<button>`, gets nothing from core
-
-| ☐   | Component             | Location                                                      | Note                                                                                                                                                |
-| --- | --------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `YearCalendarButton`  | `x-date-pickers/src/YearCalendar/YearCalendarButton.tsx:67`   | `styled('button')` with `outline: 0` at `:61`. Focus is a background using `action.focusOpacity`. **No ring, no core inheritance.**                 |
-| ☐   | `MonthCalendarButton` | `x-date-pickers/src/MonthCalendar/MonthCalendarButton.tsx:69` | Same, `outline: 0` at `:63` — but uses `action.**hoverOpacity**` where its sibling uses `focusOpacity`. Pre-existing inconsistency; fix while here. |
-
-### 4c. B — suppressions
-
-| ☐   | Slot                   | Location                                                                                                                               |
-| --- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `MuiClock` / `Wrapper` | `x-date-pickers/src/TimeClock/Clock.tsx:111`                                                                                           |
-| ☐   | `PickersSectionList`   | `x-date-pickers/src/PickersSectionList/PickersSectionList.tsx:21`, `:40`                                                               |
-| ☐   | `MuiPickersInputBase`  | `x-date-pickers/src/PickersTextField/PickersInputBase/PickersInputBase.tsx:83`, `:152` — ring delegated to `:focus-within` on the root |
-
-Related: clear-button reveal on `:focus-within` at `x-date-pickers/src/internals/components/PickerFieldUI.tsx:272`. Leave.
-
----
-
-# 5. Tree View — `x-tree-view`
-
-**Decision needed:** focus is a **background** keyed off roving-tabindex `[data-focused]`. `:focus-visible` and
-`.Mui-focusVisible` never match here, so adoption means either wiring `theme.focusVisible` into the
-`[data-focused]` selector, or leaving Tree View on its own vocabulary.
-
-| ☐   | Slot                         | Location                                           | Today                                                                                                                                       |
-| --- | ---------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `MuiTreeItem` / `Content`    | `src/TreeItem/TreeItem.tsx:66` and `:88`           | `[data-focused]` → `action.focus`; `[data-selected][data-focused]` → blended `selectedOpacity + focusOpacity`                               |
-| ☐   | `MuiTreeItem` / `LabelInput` | `src/TreeItemLabelInput/TreeItemLabelInput.tsx:17` | `'&:focus': { outline: '1px solid primary.main' }` — the only real ring in the package. **P1**, but note it's `:focus` not `:focus-visible` |
-| ☐   | `MuiTreeItem` / `Root`       | `src/TreeItem/TreeItem.tsx:34`                     | `outline: 0` — verify it doesn't swallow the item ring                                                                                      |
-
-Whatever is decided here also governs `ResourcesTreeItem` (§2e) and `GridFormulaEditable` (§3c).
-
----
-
-# 6. Charts — `x-charts` + `-pro` + `-premium`
-
-**Decision needed:** CSS `outline` has no meaning in SVG. Adoption means reading
+**Parked.** CSS `outline` has no meaning in SVG. Adoption means reading
 `theme.focusVisible.outlineColor` / `outlineWidth` into `stroke` / `strokeWidth`. All ten hard-code
 `stroke = palette.text.primary`, `strokeWidth = 2` (pie: `3`), `rx/ry = 3`.
 
@@ -299,18 +240,102 @@ Keyboard-vs-pointer intent is already tracked in JS —
 
 ---
 
+# Part III — Excluded
+
+Scheduler and Chat are **out of the current effort**. The audit below is kept as-is so the work can resume
+without re-deriving it. Neither package inherits anything from core automatically, so excluding them is
+safe: they keep their hard-coded rings and are unaffected by a consumer opting in.
+
+## 5. Scheduler — `x-scheduler` + `x-scheduler-premium`
+
+15 entries. Two shapes: **buttons** (real outline rings) and **grid cells** (background-only, no ring).
+
+Shared helper — `x-scheduler/src/internals/utils/tokens.ts:362`:
+
+```ts
+export const getCellFocusBackground = (theme: Theme) =>
+  theme.alpha((theme.vars || theme).palette.primary.light, 0.12);
+```
+
+### 5a. Buttons — real rings
+
+| Slot                                             | Location                                                                                                          | Today                                                                                  | Action |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------ |
+| `MuiEventCalendar` / `MiniCalendarDayButton`     | `x-scheduler/src/event-calendar/mini-calendar/MiniCalendar.tsx:130`                                               | `2px primary.main`, offset `2`                                                         | P1     |
+| `MuiEventCalendar` / `MonthViewCellNumberButton` | `x-scheduler/src/month-view/month-view-row/MonthViewCell.tsx:121`                                                 | ring offset `2` + `getCellFocusBackground` + `:focus-visible:hover` override at `:126` | P2     |
+| `MuiEventCalendar` / `DayTimeGridHeaderCell`     | `x-scheduler/src/internals/components/day-time-grid/DayTimeGrid.tsx:171`                                          | ring offset `-2` + `borderRadius`                                                      | P3     |
+| `MuiEventCalendar` / `DayTimeGridHeaderButton`   | `x-scheduler/src/internals/components/day-time-grid/DayTimeGrid.tsx:217`                                          | ring offset `-2` + `borderRadius`                                                      | P3     |
+| `MuiEventCalendar` / `ToolbarButton`             | `x-scheduler/src/internals/components/event-toolbar/EventToolbar.tsx:41`                                          | ring offset `-2`                                                                       | P3     |
+| `MuiEventCalendar` / `MonthViewHeaderCell`       | `x-scheduler/src/month-view/MonthView.tsx:81`                                                                     | `outline: 'none'` + `boxShadow: inset 0 0 0 2px primary.main`                          | P3     |
+| `MuiEventTimeline` / `TitleCell`                 | `x-scheduler-premium/src/event-timeline-premium/content/timeline-title-cell/EventTimelinePremiumTitleCell.tsx:55` | same `boxShadow` hack                                                                  | P3     |
+
+### 5b. Grid cells — background only, no ring today
+
+All four byte-identical: `'&:focus-visible': { outline: 'none', backgroundColor: getCellFocusBackground(theme) }`.
+
+| Slot                                               | Location                                                                                     |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `MuiEventCalendar` / `MonthViewCell`               | `x-scheduler/src/month-view/month-view-row/MonthViewCell.tsx:59`                             |
+| `MuiEventCalendar` / `DayTimeGridAllDayEventsCell` | `x-scheduler/src/internals/components/day-time-grid/DayGridCell.tsx:40`                      |
+| `MuiEventCalendar` / `DayTimeGridColumn`           | `x-scheduler/src/internals/components/day-time-grid/TimeGridColumn.tsx:34`                   |
+| `MuiEventTimeline` / `EventsCell`                  | `x-scheduler-premium/src/event-timeline-premium/content/EventTimelinePremiumContent.tsx:230` |
+
+Also `MuiEventCalendar` / `ResourcesTreeItem` — `x-scheduler/src/event-calendar/resources-tree/ResourcesTree.tsx:56`,
+`[data-focused]` background; follows the Tree View decision (§2).
+
+### 5c. Events — ring color from a per-event CSS var
+
+Ring off `var(--event-surface-accent)` so it reads against the event's own color.
+`applyChildrenFocusVisible` is the core-sanctioned way to keep that while honoring the theme.
+
+| Slot                                 | Location                                                                           | Today                                         |
+| ------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------- |
+| `MuiEventCalendar` / `EventItemCard` | `x-scheduler/src/internals/components/event/event-item/EventItem.tsx:41`           | `2px var(--event-surface-accent)`, offset `1` |
+| `MuiEventCalendar` / `DayGridEvent`  | `x-scheduler/src/internals/components/event/day-grid-event/DayGridEvent.tsx:63`    | same                                          |
+| `TimeGridEvent` root _(no slot)_     | `x-scheduler/src/internals/components/event/time-grid-event/TimeGridEvent.tsx:159` | same, offset `2`                              |
+
+`EventTimelinePremiumEvent.tsx:60` is `[data-dependency-drop-target]` — **not focus**, listed so it isn't mistaken for one.
+
+### 5d. `clip-path` — the one case core does not model
+
+`x-scheduler/src/internals/components/event/arrowClips.ts:11` — `getArrowFocusVisibleStyles` drops `clipPath`
+on focus because the chevron clip eats the outline. `applyInsetFocusVisible` only solves `overflow: hidden`.
+**Still worth feeding into the core PR** even while Scheduler is excluded.
+
+## 6. Chat — `x-chat`
+
+9 rings, all `2px solid palette.primary.main`, plus one suppression.
+
+| Slot                                             | Location                                                                        | Today                                                                      | Action                                |
+| ------------------------------------------------ | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------- |
+| `MuiChatCodeBlock` / `CopyButton`                | `src/ChatCodeBlock/ChatCodeBlock.tsx:103`                                       | `2px primary.main`, offset `2`                                             | P1                                    |
+| `MuiChatComposer` / `AttachButton`               | `src/ChatComposer/ChatComposerAttachButton.tsx:47`                              | same                                                                       | P1                                    |
+| `MuiChatComposer` / `SendButton`                 | `src/ChatComposer/ChatComposerSendButton.tsx:47`                                | same                                                                       | P1                                    |
+| `MuiChatConfirmation` / `CancelButton`           | `src/ChatConfirmation/ChatConfirmation.tsx:114`                                 | same                                                                       | P1                                    |
+| `MuiChatConfirmation` / `ConfirmButton`          | `src/ChatConfirmation/ChatConfirmation.tsx:141`                                 | `2px **warning.main**`, offset `2`                                         | Decision — only non-primary ring in X |
+| `MuiChatSuggestions` / `Item`                    | `src/ChatSuggestions/ChatSuggestions.tsx:55`                                    | `2px primary.main`, offset `2`                                             | P1                                    |
+| `ChatToolPartSectionCopyButton` _(no name/slot)_ | `src/ChatMessage/ChatMessageContent.tsx:826`                                    | ring + `opacity: 1`                                                        | P2                                    |
+| `MuiChatConversationList` / `Item`               | `src/ChatConversationList/ChatConversationList.tsx:163` (root resets at `:147`) | ring, offset `-2`                                                          | P3                                    |
+| `MuiChatMessage` / `Root`                        | `src/ChatMessage/ChatMessage.tsx:154`                                           | ring, offset `-2`, `borderRadius`                                          | P3                                    |
+| `MuiChatComposer` / `TextArea`                   | `src/ChatComposer/ChatComposerTextArea.tsx:41`                                  | `outline: 'none'`, ring on `:focus-within` (`ChatComposer.tsx:88`, `:109`) | B                                     |
+
+---
+
 ## Packages with nothing to do
 
 `x-tree-view-pro`, `x-virtualizer`, `x-internals`, `x-license*`, `x-telemetry`, `x-codemod`,
 `x-data-grid-generator`, `x-agent-tools`, `x-chat-headless`, `x-scheduler-headless*`, `x-charts-vendor`, `mcp`, `storybook`.
 
-## Open cross-cutting decisions
+## Open decisions
 
-1. **Chat confirm button** — keep `warning.main` ring, or theme wins? (§1)
-2. **Scheduler grid cells** — gain a ring when themed, or stay background-only? (§2b)
-3. **Scheduler events** — keep `var(--event-surface-accent)` via `applyChildrenFocusVisible`, or theme ring? (§2c)
-4. **`clip-path`** — core grows a story for it, or X keeps `getArrowFocusVisibleStyles` forever? (§2d) _Feed into the core PR._
-5. **Data Grid** — bridge tokens (i), full adoption (ii), or out of scope (iii)? (§3a)
-6. **Pickers "today" outline** — move it off `outline`, or suppress core's root ring? (§4a)
-7. **Roving tabindex** (`[data-focused]`, `:focus`) — in scope for Tree View / Data Grid / Scheduler tree, or a separate concept? (§5)
-8. **Charts** — map `outlineColor`/`outlineWidth` → `stroke`/`strokeWidth`, and add the 9 missing class keys? (§6)
+**Blocking the in-scope work:**
+
+1. **Pickers "today" outline** — move it off `outline` (a), or suppress core's root ring (b)? (§1a) — _render-verify the conflict first_
+2. **Roving tabindex** (`[data-focused]`, `:focus`) — does `theme.focusVisible` reach it, or is it a separate concept? (§2) — _gates §3a_
+3. **Data Grid** — bridge tokens (i), full adoption (ii), or buttons-only (iii)? (§3a)
+
+**Parked with their sections:**
+
+4. **Charts** — map `outlineColor`/`outlineWidth` → `stroke`/`strokeWidth`, and add the 9 missing class keys? (§4)
+5. **`clip-path`** — core grows a story for it, or X keeps `getArrowFocusVisibleStyles`? (§5d) — _still worth raising in the core PR_
+6. **Scheduler grid cells / events**, **Chat confirm button** — deferred with their packages (§5b, §5c, §6)
