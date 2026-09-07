@@ -107,17 +107,41 @@ _add_; the work is confirming what it looks like and fixing where it fights exis
 | ☐   | `MuiDigitalClock` / `Item`                    | `x-date-pickers/src/DigitalClock/DigitalClock.tsx:88` is `styled(MenuItem)`           | MenuItem is a core clip-prone family → gets core's inset ring, **and** keeps painting its own `.Mui-focusVisible` background (`:92`). Both render — verify they read as one state, not two.                     |
 | ☐   | `MuiMultiSectionDigitalClockSection` / `Item` | `x-date-pickers/src/MultiSectionDigitalClock/MultiSectionDigitalClockSection.tsx:116` | Same as above (`:120`).                                                                                                                                                                                         |
 
-**The "today" conflict, precisely.** `outline` is a single CSS property, so the two rules cannot both
-render — one overrides the other. Core's rule is `&.Mui-focusVisible` → `.css-buttonbase.Mui-focusVisible`,
-specificity (0,2,0). PickerDay's "today" variant lands on its own class, (0,1,0). **Core wins**, so a
-keyboard-focused "today" cell shows the focus ring and silently loses its today marker — exactly when a
-keyboard user needs it most.
+### The "today" conflict — **verified**
 
-_This is derived from specificity, not yet observed — render-verify it first._ Then decide:
+Rendered `DateCalendar` under `createTheme({ focusVisible: { outlineColor: '#d81b60' } })`, forcing
+`Mui-focusVisible` (the exact class `ButtonBase` adds on real keyboard focus) and reading computed style:
 
-- **(a)** Move "today" off `outline` (to `boxShadow` or a `::after`) so both indicators coexist. _Recommended_ —
-  keeps the marker and lets the themed ring do its job.
-- **(b)** Suppress core's root ring on the day cells and keep drawing focus manually. Loses theming.
+| Case                      | `outline`                   | `outline-offset` |
+| ------------------------- | --------------------------- | ---------------- |
+| A · today, not focused    | `rgba(0,0,0,0.6) solid 1px` | `-1px`           |
+| B · today, **focused**    | `rgb(216,27,96) solid 2px`  | `2px`            |
+| C · ordinary day, focused | `rgb(216,27,96) solid 2px`  | `2px`            |
+
+`outline` is a single CSS property, so the two rules cannot both render. Core's `&.Mui-focusVisible` is
+specificity (0,2,0) against the "today" variant's (0,1,0), so **core wins** — confirmed, not inferred.
+
+**B and C are identical.** The today marker is not merely overridden, it is _unrecoverable_: a focused
+"today" and a focused ordinary day render exactly the same, so a keyboard user cannot tell which day is
+today — precisely when they most need to. That is the real defect, and it is worse than a cosmetic clash.
+
+**Second finding — the ring crowds its neighbours.** `DAY_SIZE` is 36 and `DAY_MARGIN` is 2
+(`x-date-pickers/src/internals/constants/dimensions.ts`), so adjacent day cells sit **4px** apart. The
+default ring reaches `offset 2 + width 2 = 4px` — it exactly fills the gap and abuts the next day. Any
+consumer who customizes (verified with `outlineWidth: 3, outlineOffset: 4` → reach 7px) gets a ring that
+visibly crowds the neighbouring dates. Customizing is the entire point of the feature, so this is a
+first-class case, not an edge one.
+
+**Decide:**
+
+- **(a)** Move "today" off `outline` (to `boxShadow` or a `::after`) so both indicators coexist, **and**
+  inset the ring with `applyInsetFocusVisible` so it stops colliding with neighbours. _Recommended_ —
+  fixes both findings and keeps the ring themeable.
+- **(b)** Suppress core's root ring on the day cells and keep drawing focus manually. Sidesteps both, but
+  opts the most-used picker surface out of the theming this effort exists to deliver.
+
+Note the two findings are independent: insetting alone fixes the collision but **not** the today conflict,
+because an inset ring still writes `outline`.
 
 ### 1b. Real gaps — focusable, no ring, no core inheritance
 
