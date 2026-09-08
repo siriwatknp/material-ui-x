@@ -86,6 +86,18 @@ themed ring — X's own fallback ring already hard-codes its inset), the **fallb
 **P4 — outset guard.** Only when the root sits inside a core clip-prone component (Tab, MenuItem, …) whose
 inset vars would inherit down. `...(theme.focusVisible && outsetFocusRing)`.
 
+### Verifying a ring — three traps, all hit while doing §1
+
+1. **Two different focus mechanisms, two different test setups.** Core's `ButtonBase` ring keys off the
+   `.Mui-focusVisible` **class**, which JS adds — so forcing that class reproduces it (that is how §1a was
+   verified). X's own rules key off the real `:focus-visible` **pseudo-class**, which only matches on
+   genuine focus — forcing the class there does nothing. Match the technique to the component.
+2. **Only one element per page can hold focus.** Rendering two "focused" cases side by side silently leaves
+   the first one unfocused; it reads as "the ring does not work". Screenshot one focused case at a time.
+3. **A correct computed `outline` can still paint nothing.** `MuiClock`/`Wrapper` computes a perfect
+   2px ring on a **220×0** box. Always confirm by eye, and check the element's rect and its clipping
+   ancestors before concluding either way.
+
 ---
 
 # Part I — In scope
@@ -149,11 +161,11 @@ None of these is a `ButtonBase`, so `theme.focusVisible` cannot reach them. All 
 with `outline` zeroed — genuine WCAG 2.4.7 gaps today, independent of the theme work, and the natural place
 to wire the themed ring.
 
-| ☐   | Component              | Location                                                      | Note                                                                                                                                                                                               |
-| --- | ---------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `YearCalendarButton`   | `x-date-pickers/src/YearCalendar/YearCalendarButton.tsx:67`   | `styled('button')` with `outline: 0` at `:61`. Focus is a background using `action.focusOpacity`.                                                                                                  |
-| ☐   | `MonthCalendarButton`  | `x-date-pickers/src/MonthCalendar/MonthCalendarButton.tsx:69` | Same, `outline: 0` at `:63` — but uses `action.**hoverOpacity**` where its sibling uses `focusOpacity`. Pre-existing slip; flag, don't silently fix (the values differ, so it is a visual change). |
-| ☐   | `MuiClock` / `Wrapper` | `x-date-pickers/src/TimeClock/Clock.tsx:107`                  | `styled('div')` rendered with **`tabIndex={0}`** (`:449`) and `'&:focus': { outline: 'none' }`. A focusable element with its only indicator removed — the clearest 2.4.7 failure in the package.   |
+| ☐   | Component              | Location                                                   | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --- | ---------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ☑   | `YearCalendarButton`   | `x-date-pickers/src/YearCalendar/YearCalendarButton.tsx`   | **Done.** `...(theme.focusVisible && { '&:focus-visible': theme.focusVisible })`. Verified: ring renders on real keyboard focus; unset → `outline-style: none`, pixel-identical to master.                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ☑   | `MonthCalendarButton`  | `x-date-pickers/src/MonthCalendar/MonthCalendarButton.tsx` | **Done**, same one-liner, same verification. The `action.hoverOpacity`-vs-`focusOpacity` slip against its sibling is left alone — the values differ, so fixing it is a visual change that deserves its own call.                                                                                                                                                                                                                                                                                                                                                                             |
+| ☐   | `MuiClock` / `Wrapper` | `x-date-pickers/src/TimeClock/Clock.tsx:107`               | **Blocked — structural, not wiring.** The wrapper is `role="listbox"` with `tabIndex={0}` but measures **220×0**: the clock numbers are absolutely positioned against `ClockClock` (220×220), so the wrapper has no box for an outline to trace. A ring here computes correctly and paints nothing — verified, then reverted. Fixing it means giving the wrapper a box (e.g. `position: absolute; inset: 0; border-radius: 50%` inside the already-relative `ClockClock`), which moves the containing block for the numbers. Still the package's clearest 2.4.7 failure, but its own change. |
 
 ### 1c. No action — inert with respect to `theme.focusVisible`
 
