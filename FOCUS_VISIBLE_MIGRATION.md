@@ -122,8 +122,8 @@ _add_; the work is confirming what it looks like and fixing where it fights exis
 
 | ☐   | Slot                                          | Location                                                                              | What happens                                                                                                                                                                                                    |
 | --- | --------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `MuiPickerDay` / `Root`                       | `x-date-pickers/src/PickerDay/PickerDay.tsx:46` is `styled(ButtonBase)`               | Gets core's root ring (PickerDay does not set the private `internalDisabledThemeFocusVisible` gate, so the variant is live). **Conflicts with the "today" marker** at `:138` — both write `outline`. See below. |
-| ☐   | `MuiDateRangePickerDay` / `Root`              | `x-date-pickers-pro/src/DateRangePickerDay/DateRangePickerDay.tsx:199`                | Same conflict, "today" outline at `:243`. Also `zIndex: 1` + `isolation: 'isolate'` + `::before`/`::after` range pseudo-elements at `:205` that an outset ring will interact with.                              |
+| ☑   | `MuiPickerDay` / `Root`                       | `x-date-pickers/src/PickerDay/PickerDay.tsx:46` is `styled(ButtonBase)`               | Gets core's root ring (PickerDay does not set the private `internalDisabledThemeFocusVisible` gate, so the variant is live). **Conflicts with the "today" marker** at `:138` — both write `outline`. See below. |
+| ☑   | `MuiDateRangePickerDay` / `Root`              | `x-date-pickers-pro/src/DateRangePickerDay/DateRangePickerDay.tsx:199`                | Same conflict, "today" outline at `:243`. Also `zIndex: 1` + `isolation: 'isolate'` + `::before`/`::after` range pseudo-elements at `:205` that an outset ring will interact with.                              |
 | ☐   | `MuiDigitalClock` / `Item`                    | `x-date-pickers/src/DigitalClock/DigitalClock.tsx:88` is `styled(MenuItem)`           | MenuItem is a core clip-prone family → gets core's inset ring, **and** keeps painting its own `.Mui-focusVisible` background (`:92`). Both render — verify they read as one state, not two.                     |
 | ☐   | `MuiMultiSectionDigitalClockSection` / `Item` | `x-date-pickers/src/MultiSectionDigitalClock/MultiSectionDigitalClockSection.tsx:116` | Same as above (`:120`).                                                                                                                                                                                         |
 
@@ -152,16 +152,36 @@ consumer who customizes (verified with `outlineWidth: 3, outlineOffset: 4` → r
 visibly crowds the neighbouring dates. Customizing is the entire point of the feature, so this is a
 first-class case, not an edge one.
 
-**Decide:**
+**Decision: (b) — suppress core's ring on the day cells.** Implemented and verified.
 
-- **(a)** Move "today" off `outline` (to `boxShadow` or a `::after`) so both indicators coexist, **and**
-  inset the ring with `applyInsetFocusVisible` so it stops colliding with neighbours. _Recommended_ —
-  fixes both findings and keeps the ring themeable.
-- **(b)** Suppress core's root ring on the day cells and keep drawing focus manually. Sidesteps both, but
-  opts the most-used picker surface out of the theming this effort exists to deliver.
+Day cells now opt out of `theme.focusVisible` entirely, so they render exactly as they do without it:
+a focused "today" keeps its 1px marker, a focused ordinary day shows only the `:focus` background.
 
-Note the two findings are independent: insetting alone fixes the collision but **not** the today conflict,
-because an inset ring still writes `outline`.
+| after (b)             | `outline`                   | `outline-offset` |
+| --------------------- | --------------------------- | ---------------- |
+| today, focused        | `rgba(0,0,0,0.6) solid 1px` | `-1px`           |
+| ordinary day, focused | `none`                      | `0px`            |
+
+A `Button` rendered alongside still shows the themed ring, which proves the opt-out is scoped to the day
+cells rather than the theme silently failing to apply.
+
+**How.** Core gates this ring with `internalDisabledThemeFocusVisible`, the same prop `SwitchBase` and
+`StepButton` use — but it is **not public API**, so this is a deliberate reach into core internals:
+
+- Passed only when `theme.focusVisible` is set. That implies `@mui/material` v9.4+, where `ButtonBase`
+  destructures the prop; on the v7 range MUI X still peers it is never passed, so it cannot reach the DOM.
+  Verified: no `internal*` attribute on the rendered cell.
+- Typed via a `Record<string, unknown>` cast, since the prop is absent from `ButtonBase`'s public `.d.ts`.
+- **Fragile by construction:** if core renames or drops the prop, the ring silently comes back. The
+  `@mui/x-internals/focusVisible` header and both call sites say so. **This is the strongest argument for the
+  core PR to expose a supported opt-out** — worth raising there alongside the `clip-path` gap (§5d).
+
+The two verified findings behind the decision are recorded above; (b) sidesteps both, at the cost of the
+most-used picker surface not participating in the theme. The alternative, **(a)** — move "today" off
+`outline` and inset the ring — remains available if that trade is ever revisited.
+
+(The two findings are independent: insetting alone would have fixed the neighbour collision but **not** the
+today conflict, because an inset ring still writes `outline`. (b) moots both by removing the ring.)
 
 ### 1b. Real gaps — focusable, no ring, no core inheritance
 
