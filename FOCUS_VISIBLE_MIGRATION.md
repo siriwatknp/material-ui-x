@@ -17,9 +17,8 @@ Exports: `applyInsetFocusVisible`, `outsetFocusRing`, `applyChildrenFocusVisible
 | Later        | Charts (+ pro, premium)                                                | §4, parked                             |
 | Excluded     | Scheduler (+ premium), Chat                                            | §5, research kept for when they resume |
 
-Suggested order: **Pickers → Tree View → Data Grid**. Pickers has concrete defects that land on their own
-(§1a) and three real a11y gaps that need no policy call (§1b). Tree View is three edits but settles the
-roving-tabindex question (§2), which Data Grid's largest decision then depends on (§3a).
+Order: **Pickers → Tree View → Data Grid**. Pickers ✅ done (§1, bar `ClockWrapper`). Tree View ✅ done (§2),
+which settled the roving-tabindex question. Data Grid (§3) is next and still needs its strategy call.
 
 **In scope:** 26 rows — Pickers 9 (§1), Tree View 3 (§2), Data Grid 14 (§3). Everything else is deferred.
 Of the Pickers 9, only 7 are work: 4 already wired by core and needing verification, 3 genuine gaps.
@@ -211,18 +210,35 @@ Related: clear-button reveal on `:focus-within` at `x-date-pickers/src/internals
 
 # 2. Tree View — `x-tree-view`
 
-**Decision needed first:** focus is a **background** keyed off roving-tabindex `[data-focused]`.
-`:focus-visible` and `.Mui-focusVisible` never match here, so adoption means either wiring
-`theme.focusVisible` into the `[data-focused]` selector, or leaving Tree View on its own vocabulary.
+**Done.** The "roving tabindex means `:focus-visible` never matches" framing was **wrong** — corrected here.
 
-Settle this before Data Grid — the same question governs grid cells (§3a) and `GridFormulaEditable` (§3c),
-and (when they resume) `ResourcesTreeItem` in Scheduler (§5b).
+The tab stop is the root `<li role="treeitem">` (`useTreeItem.ts:223` puts `tabIndex` on the root slot), so
+`:focus-visible` _does_ match. What does not work is putting the ring there: once an item is expanded the
+root wraps its whole subtree, so the ring would enclose every descendant. The visible row is the **Content**
+slot, a direct child, which is where `[data-focused]` already paints.
 
-| ☐   | Slot                         | Location                                           | Today                                                                                                                                       |
-| --- | ---------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☐   | `MuiTreeItem` / `Content`    | `src/TreeItem/TreeItem.tsx:66` and `:88`           | `[data-focused]` → `action.focus`; `[data-selected][data-focused]` → blended `selectedOpacity + focusOpacity`                               |
-| ☐   | `MuiTreeItem` / `LabelInput` | `src/TreeItemLabelInput/TreeItemLabelInput.tsx:17` | `'&:focus': { outline: '1px solid primary.main' }` — the only real ring in the package. **P1**, but note it's `:focus` not `:focus-visible` |
-| ☐   | `MuiTreeItem` / `Root`       | `src/TreeItem/TreeItem.tsx:34`                     | `outline: 0` — verify it doesn't swallow the item ring                                                                                      |
+That is the same split core uses for its slot-drawn controls (Checkbox focuses a hidden input and rings the
+icon; Switch rings the track): **focus lands on one element, the ring is drawn on another.** So the two
+vocabularies are not a choice — they coexist:
+
+- `[data-focused]` stays as the roving-tabindex **cursor**: marks the current item however it was reached.
+- `.root:focus-visible > .content` gets the themed **ring**: keyboard only.
+
+Inset via `applyInsetFocusVisible(1)` — neither `SimpleTreeView` nor `RichTreeView` sets `overflow`, but a
+tree is routinely dropped into a scrollable panel, which is why core insets `ListItemButton` too.
+
+Verified: unset → no ring rule at all; set → root `li` stays `outline: none` (subtree not enclosed) and the
+content row gets `solid 2px / offset -2px` alongside its `[data-focused]` background.
+
+| ☑   | Slot                         | Location                                           | Outcome                                                                                                                                                                                                                                                                                                                                                                   |
+| --- | ---------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ☑   | `MuiTreeItem` / `Content`    | `src/TreeItem/TreeItem.tsx`                        | Ring added on `.root:focus-visible > &`, inset. `[data-focused]` background untouched.                                                                                                                                                                                                                                                                                    |
+| ☑   | `MuiTreeItem` / `Root`       | `src/TreeItem/TreeItem.tsx:35`                     | `outline: 0` **kept deliberately** — it suppresses the browser default on the `li`, which would otherwise enclose the subtree. Not a bug.                                                                                                                                                                                                                                 |
+| ☐   | `MuiTreeItem` / `LabelInput` | `src/TreeItemLabelInput/TreeItemLabelInput.tsx:17` | **Left alone, open question.** `'&:focus': { outline: '1px solid primary.main' }` on the rename `<input>`. Adopting means either keeping `:focus` (so a mouse click also draws the "keyboard" ring — semantically wrong) or switching to `:focus-visible` (a behaviour change). Core deliberately excludes inputs from `focusVisible` (§1c), which argues for leaving it. |
+
+**This unblocks §3a.** Roving tabindex does not force a component off `theme.focusVisible`; the question is
+only _which element_ carries the ring. Data Grid's cell ring is a separate matter — it is `:focus`, not
+`:focus-visible`, because it must also show on click-focus.
 
 ---
 
@@ -402,9 +418,12 @@ on focus because the chevron clip eats the outline. `applyInsetFocusVisible` onl
 
 **Blocking the in-scope work:**
 
-1. **Pickers "today" outline** — move it off `outline` (a), or suppress core's root ring (b)? (§1a) — _render-verify the conflict first_
-2. **Roving tabindex** (`[data-focused]`, `:focus`) — does `theme.focusVisible` reach it, or is it a separate concept? (§2) — _gates §3a_
-3. **Data Grid** — bridge tokens (i), full adoption (ii), or buttons-only (iii)? (§3a)
+1. ~~**Pickers "today" outline**~~ ✅ Done — **(b)**, day cells opt out of the ring (§1a).
+2. ~~**Roving tabindex**~~ ✅ Done — not an either/or: the cursor (`[data-focused]`) and the ring
+   (`:focus-visible`) coexist on different elements (§2).
+3. **Data Grid** — bridge tokens (i), full adoption (ii), or buttons-only (iii)? (§3a) — **the one open call**
+4. **`ClockWrapper`** — give the 220×0 wrapper a box so it can carry a ring? (§1b)
+5. **`TreeItemLabelInput`** — adopt on the rename input, or leave it (core excludes inputs)? (§2)
 
 **Parked with their sections:**
 
