@@ -17,9 +17,9 @@ Exports: `applyInsetFocusVisible`, `outsetFocusRing`, `applyChildrenFocusVisible
 | Later        | Charts (+ pro, premium)                                                | §4, parked                             |
 | Excluded     | Scheduler (+ premium), Chat                                            | §5, research kept for when they resume |
 
-Order: **Pickers → Tree View → Data Grid**. Pickers ✅ (§1, bar `ClockWrapper`). Tree View ✅ (§2), which
-settled the roving-tabindex question. Data Grid ✅ for the cell ring via token bridging (§3a); §3b — three
-premium buttons — is the remaining mechanical work.
+**All three in-scope packages are done.** Pickers ✅ (§1, bar `ClockWrapper`). Tree View ✅ (§2), which
+settled the roving-tabindex question. Data Grid ✅ — cell ring bridged through the grid's tokens (§3a) and
+the three premium buttons wired (§3b). Remaining: two flagged items and the deferred Charts work.
 
 **In scope:** 26 rows — Pickers 9 (§1), Tree View 3 (§2), Data Grid 14 (§3). Everything else is deferred.
 Of the Pickers 9, only 7 are work: 4 already wired by core and needing verification, 3 genuine gaps.
@@ -280,14 +280,22 @@ focused cell computes `solid 3px, offset -3px`, still inside the cell.
 | ☑   | `MuiDataGrid` / `Root` — editing cell       | same file                                                 | Same tokens.                                                                                 |
 | ☐   | `MuiDataGrid` / `Root` — sort button reveal | `GridRootStyles.ts` (`:focus-visible` → `opacity`)        | Reveal only, no ring. Left as-is.                                                            |
 
-### 3b. Premium — real `:focus-visible` rings, mechanical
+### 3b. Premium buttons — done
 
-| ☐   | Slot                                        | Location                                                                   | Today                                                                                                      | Action                                                                                         |
-| --- | ------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| ☐   | `MuiDataGrid` / `CollapsibleTrigger`        | `x-data-grid-premium/src/components/collapsible/CollapsibleTrigger.tsx:47` | `2px interactive.**selected**`, offset `-2`                                                                | **P3**. Note it uses `selected` while cells use `focus` — already inconsistent; fix while here |
-| ☐   | `MuiDataGrid` / `ChartsPanelChartSelection` | `x-data-grid-premium/src/components/chartsPanel/GridChartsPanel.tsx:71`    | `'&:hover, &:focus-visible': { backgroundColor }` — **no ring at all**, focus indistinguishable from hover | **Gap** — split focus from hover and give it a ring                                            |
-| ☐   | `MuiDataGrid` / `PromptChangesToggle`       | `x-data-grid-premium/src/components/prompt/GridPrompt.tsx:180`             | `'&:hover, &:focus-visible': { textDecoration: 'underline' }` — **no ring**                                | **Gap** — same                                                                                 |
-| ☐   | `MuiDataGrid` / `Prompt`                    | `x-data-grid-premium/src/components/prompt/GridPrompt.tsx:84`              | action reveal, `opacity: 1`                                                                                | Reveal only — likely leave                                                                     |
+All three inset: the grid root is `overflow: hidden`, and `PromptChangesToggle` additionally sits inside a
+`PromptItem` that is too (`GridPrompt.tsx:82`).
+
+| ☑   | Slot                                        | Outcome                                                                                                                                                                                            |
+| --- | ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ☑   | `MuiDataGrid` / `CollapsibleTrigger`        | **P3.** Its own `2px interactive.selected` ring becomes the unset fallback, so nothing moves until the app opts in. The `selected`-vs-`focus` token inconsistency is now moot for the themed path. |
+| ☑   | `MuiDataGrid` / `ChartsPanelChartSelection` | **Gap closed.** Had no ring — focus was indistinguishable from hover. Guarded with `&&` and no fallback, so unset still has no ring (unchanged) and opting in adds one.                            |
+| ☑   | `MuiDataGrid` / `PromptChangesToggle`       | Same. Lives in an `@mui/system` `styled`, whose `Theme` type lacks `focusVisible`, so this one call site casts to the Material `Theme` — noted inline.                                             |
+| ☐   | `MuiDataGrid` / `Prompt`                    | Action reveal (`opacity`), no ring. Left as-is.                                                                                                                                                    |
+
+**Verified by typecheck + 1144 premium tests + code shape, not by render.** These sit deep inside panels that
+are awkward to drive standalone. The shape is identical to three sites already render-verified
+(`YearCalendarButton`, `MonthCalendarButton`, `TreeItemContent`): `||` fallback keeps the unset appearance
+byte-identical, `&&` adds nothing when unset. Worth an eyeball next time the panels are open anyway.
 
 ### 3c. B — suppressions, verify each still makes sense
 
@@ -439,9 +447,7 @@ on focus because the chevron clip eats the outline. `applyInsetFocusVisible` onl
 
 **Remaining:**
 
-4. **§3b — three premium buttons.** `CollapsibleTrigger` (P3), plus `ChartsPanelChartSelection` and
-   `PromptChangesToggle`, which today have **no ring at all** — focus is indistinguishable from hover.
-   Mechanical; no decision needed.
+4. ~~**§3b — three premium buttons**~~ ✅ Done.
 5. **`ClockWrapper`** — give the 220×0 wrapper a box so it can carry a ring? (§1b)
 6. **`TreeItemLabelInput`** — adopt on the rename input, or leave it (core excludes inputs)? (§2)
 
