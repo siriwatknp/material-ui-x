@@ -17,9 +17,9 @@ Exports: `applyInsetFocusVisible`, `outsetFocusRing`, `applyChildrenFocusVisible
 | Later        | Charts (+ pro, premium)                                                | §4, parked                             |
 | Excluded     | Scheduler (+ premium), Chat                                            | §5, research kept for when they resume |
 
-**All three in-scope packages are done.** Pickers ✅ (§1, bar `ClockWrapper`). Tree View ✅ (§2), which
+**All three in-scope packages are done.** Pickers ✅ (§1, `ClockWrapper` included). Tree View ✅ (§2), which
 settled the roving-tabindex question. Data Grid ✅ — cell ring bridged through the grid's tokens (§3a) and
-the three premium buttons wired (§3b). Remaining: two flagged items and the deferred Charts work.
+the three premium buttons wired (§3b). Remaining: `TreeItemLabelInput` and the deferred Charts work.
 
 **In scope:** 26 rows — Pickers 9 (§1), Tree View 3 (§2), Data Grid 14 (§3). Everything else is deferred.
 Of the Pickers 9, only 7 are work: 4 already wired by core and needing verification, 3 genuine gaps.
@@ -101,10 +101,16 @@ inset vars would inherit down. `...(theme.focusVisible && outsetFocusRing)`.
    `:focus-visible` at all — applying the resolved ring inline to two elements lets an edge case and a
    control appear in one screenshot, which trap 2 otherwise forbids.
 
-**Check every scroller.** Any `overflow: auto/hidden/scroll` ancestor cuts an outset ring once the focused
-element reaches the edge, and keyboard navigation parks it there by design. `YearCalendar` needed the inset;
-`MonthCalendar` did not, because it has no scroller. Grep the component's own root for `overflow` before
-assuming outset is safe.
+**Check every scroller — and measure before insetting.** Any `overflow: auto/hidden/scroll` ancestor cuts an
+outset ring once the focused element reaches the edge, and keyboard navigation parks it there by design.
+`YearCalendar` needed the inset; `MonthCalendar` did not, because it has no scroller.
+
+Insetting is not the safe default, though — it is a visual choice with a cost, so it needs the same evidence
+as anything else. `MuiClock`/`Wrapper` was insetted on the assumption that a picker popover would clip an
+outset ring. Measured in a real desktop picker: the Paper is **`overflow: visible`** with 16px above the
+clock and 50px either side, against a 4px ring reach. Nothing clipped, and the inset ring cut across the
+clock face and crowded the 12/3/6/9 numerals. Reverted to outset. **Render the component in its real
+container and read the numbers before reaching for `applyInsetFocusVisible`.**
 
 ---
 
@@ -189,11 +195,11 @@ None of these is a `ButtonBase`, so `theme.focusVisible` cannot reach them. All 
 with `outline` zeroed — genuine WCAG 2.4.7 gaps today, independent of the theme work, and the natural place
 to wire the themed ring.
 
-| ☐   | Component              | Location                                                   | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| --- | ---------------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☑   | `YearCalendarButton`   | `x-date-pickers/src/YearCalendar/YearCalendarButton.tsx`   | **Done, inset (P3).** The year list is an `overflowY: auto` scroller (`YearCalendar.tsx:63`), and an outset ring on a button at the edge is **cut in half** — verified visually. `applyInsetFocusVisible(1)` flips the offset to `-2px`, so the ring hugs the button and can never be clipped beyond it. Unset → `outline-style: none`.                                                                                                                                                                                                                                                      |
-| ☑   | `MonthCalendarButton`  | `x-date-pickers/src/MonthCalendar/MonthCalendarButton.tsx` | **Done**, same one-liner, same verification. The `action.hoverOpacity`-vs-`focusOpacity` slip against its sibling is left alone — the values differ, so fixing it is a visual change that deserves its own call.                                                                                                                                                                                                                                                                                                                                                                             |
-| ☐   | `MuiClock` / `Wrapper` | `x-date-pickers/src/TimeClock/Clock.tsx:107`               | **Blocked — structural, not wiring.** The wrapper is `role="listbox"` with `tabIndex={0}` but measures **220×0**: the clock numbers are absolutely positioned against `ClockClock` (220×220), so the wrapper has no box for an outline to trace. A ring here computes correctly and paints nothing — verified, then reverted. Fixing it means giving the wrapper a box (e.g. `position: absolute; inset: 0; border-radius: 50%` inside the already-relative `ClockClock`), which moves the containing block for the numbers. Still the package's clearest 2.4.7 failure, but its own change. |
+| ☐   | Component              | Location                                                   | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| --- | ---------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ☑   | `YearCalendarButton`   | `x-date-pickers/src/YearCalendar/YearCalendarButton.tsx`   | **Done, inset (P3).** The year list is an `overflowY: auto` scroller (`YearCalendar.tsx:63`), and an outset ring on a button at the edge is **cut in half** — verified visually. `applyInsetFocusVisible(1)` flips the offset to `-2px`, so the ring hugs the button and can never be clipped beyond it. Unset → `outline-style: none`.                                                                                                                      |
+| ☑   | `MonthCalendarButton`  | `x-date-pickers/src/MonthCalendar/MonthCalendarButton.tsx` | **Done**, same one-liner, same verification. The `action.hoverOpacity`-vs-`focusOpacity` slip against its sibling is left alone — the values differ, so fixing it is a visual change that deserves its own call.                                                                                                                                                                                                                                             |
+| ☑   | `MuiClock` / `Wrapper` | `x-date-pickers/src/TimeClock/Clock.tsx`                   | **Done.** The wrapper is the clock's only tab stop but measured **220×0** — its children are absolutely positioned — so a ring computed correctly and painted nothing. Fixed with `width/height: 100%` + `borderRadius: 50%`, **not** `position: absolute`: staying `static` keeps `ClockClock` as the numbers' containing block, so their layout cannot move (verified — all 12 positions identical). Ring is **outset**, i.e. whatever the app configured. |
 
 ### 1c. No action — inert with respect to `theme.focusVisible`
 
@@ -448,7 +454,7 @@ on focus because the chevron clip eats the outline. `applyInsetFocusVisible` onl
 **Remaining:**
 
 4. ~~**§3b — three premium buttons**~~ ✅ Done.
-5. **`ClockWrapper`** — give the 220×0 wrapper a box so it can carry a ring? (§1b)
+5. ~~**`ClockWrapper`**~~ ✅ Done — box fixed with percentage sizing, ring outset (§1b).
 6. **`TreeItemLabelInput`** — adopt on the rename input, or leave it (core excludes inputs)? (§2)
 
 **Parked with their sections:**
