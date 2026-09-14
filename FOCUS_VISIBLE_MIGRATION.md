@@ -17,8 +17,9 @@ Exports: `applyInsetFocusVisible`, `outsetFocusRing`, `applyChildrenFocusVisible
 | Later        | Charts (+ pro, premium)                                                | §4, parked                             |
 | Excluded     | Scheduler (+ premium), Chat                                            | §5, research kept for when they resume |
 
-Order: **Pickers → Tree View → Data Grid**. Pickers ✅ done (§1, bar `ClockWrapper`). Tree View ✅ done (§2),
-which settled the roving-tabindex question. Data Grid (§3) is next and still needs its strategy call.
+Order: **Pickers → Tree View → Data Grid**. Pickers ✅ (§1, bar `ClockWrapper`). Tree View ✅ (§2), which
+settled the roving-tabindex question. Data Grid ✅ for the cell ring via token bridging (§3a); §3b — three
+premium buttons — is the remaining mechanical work.
 
 **In scope:** 26 rows — Pickers 9 (§1), Tree View 3 (§2), Data Grid 14 (§3). Everything else is deferred.
 Of the Pickers 9, only 7 are work: 4 already wired by core and needing verification, 3 genuine gaps.
@@ -248,23 +249,36 @@ Largest surface, and the one whose decision has the widest blast radius. The gri
 indirection**: `--DataGrid-t-color-interactive-focus`, defaulted from `palette.primary.main` at
 `x-data-grid/src/material/variables.ts:66`. It is already themeable — just not via `theme.focusVisible`.
 
-### 3a. Strategy decision for the whole package
+### 3a. Strategy — **(i) bridge the tokens**, done
 
 The cell/header ring uses `:focus` / `:focus-within`, **not** `:focus-visible`, because the grid's roving
-tabindex must show the ring on click-focus too. Options:
+tabindex must show the cursor on click-focus too. Rather than replace that, `theme.focusVisible` now feeds
+the grid's own token layer:
 
-- **(i) Bridge the tokens** — when `theme.focusVisible` is set, feed its `outlineColor` / `outlineWidth` into
-  `interactive.focus` + `focusOutlineWidth`. Keeps the grid's 1px-inset design and its `:focus` semantics.
-  _Recommended._
-- **(ii) Full adoption** — swap the cell ring to `theme.focusVisible` verbatim. Changes width 1px → 2px and
-  loses the `:focus-within` 50%-opacity variant. Visually loud.
-- **(iii) Out of scope** — the cell ring is a data cursor; only the grid's _buttons_ adopt.
+|        | source                                                                                               |
+| ------ | ---------------------------------------------------------------------------------------------------- |
+| colour | `theme.focusVisible.outlineColor` → `--DataGrid-t-color-interactive-focus` (`material/variables.ts`) |
+| width  | `theme.focusVisible.outlineWidth` → `--DataGrid-t-focus-outline-width` (new token)                   |
 
-| ☐   | Slot                                        | Location                                                              | Today                                                                                          |
-| --- | ------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| ☐   | `MuiDataGrid` / `Root` — cells + headers    | `x-data-grid/src/components/containers/GridRootStyles.ts:262`         | `:focus-within` at 50% opacity, `:focus` at full; `focusOutlineWidth = 1` (`:17`), offset `-1` |
-| ☐   | `MuiDataGrid` / `Root` — editing cell       | `x-data-grid/src/components/containers/GridRootStyles.ts:636`         | `1px interactive.focus`, offset `-1`                                                           |
-| ☐   | `MuiDataGrid` / `Root` — sort button reveal | `x-data-grid/src/components/containers/GridRootStyles.ts:418`, `:425` | `:focus-visible` → `opacity: 1` / `0.78`. Reveal only, no ring — probably leave as-is          |
+Width is bridged deliberately: a team that widens the ring for legibility must not silently get 1px inside
+the grid. `GridRootStyles` takes no `theme` — it routes everything through `vars` — so the width had to
+become a token rather than a module constant.
+
+**Not bridged, on purpose.** Geometry and selector stay the grid's own: the ring remains **inset**
+(`offset = -width`), because cells are adjacent and an outset ring would overlap neighbours and be clipped
+by the virtualized scroller; and it stays on `:focus`, because the cell cursor must survive a mouse click.
+`outlineStyle` is also left alone — the grid hardcodes `solid`.
+
+`false` (the explicit opt-out) falls back to the grid defaults exactly like `undefined`.
+
+Verified by render — unset: `1px` / `rgba(from #1976d2 …)`; set to `#d81b60 / 3px`: tokens follow and the
+focused cell computes `solid 3px, offset -3px`, still inside the cell.
+
+| ☑   | Slot                                        | Location                                                  | Outcome                                                                                      |
+| --- | ------------------------------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| ☑   | `MuiDataGrid` / `Root` — cells + headers    | `x-data-grid/src/components/containers/GridRootStyles.ts` | Colour and width now read the bridged tokens; `:focus-within` keeps its 50%-opacity variant. |
+| ☑   | `MuiDataGrid` / `Root` — editing cell       | same file                                                 | Same tokens.                                                                                 |
+| ☐   | `MuiDataGrid` / `Root` — sort button reveal | `GridRootStyles.ts` (`:focus-visible` → `opacity`)        | Reveal only, no ring. Left as-is.                                                            |
 
 ### 3b. Premium — real `:focus-visible` rings, mechanical
 
@@ -421,9 +435,15 @@ on focus because the chevron clip eats the outline. `applyInsetFocusVisible` onl
 1. ~~**Pickers "today" outline**~~ ✅ Done — **(b)**, day cells opt out of the ring (§1a).
 2. ~~**Roving tabindex**~~ ✅ Done — not an either/or: the cursor (`[data-focused]`) and the ring
    (`:focus-visible`) coexist on different elements (§2).
-3. **Data Grid** — bridge tokens (i), full adoption (ii), or buttons-only (iii)? (§3a) — **the one open call**
-4. **`ClockWrapper`** — give the 220×0 wrapper a box so it can carry a ring? (§1b)
-5. **`TreeItemLabelInput`** — adopt on the rename input, or leave it (core excludes inputs)? (§2)
+3. ~~**Data Grid**~~ ✅ Done — **(i)**, colour and width bridged into the grid's tokens (§3a).
+
+**Remaining:**
+
+4. **§3b — three premium buttons.** `CollapsibleTrigger` (P3), plus `ChartsPanelChartSelection` and
+   `PromptChangesToggle`, which today have **no ring at all** — focus is indistinguishable from hover.
+   Mechanical; no decision needed.
+5. **`ClockWrapper`** — give the 220×0 wrapper a box so it can carry a ring? (§1b)
+6. **`TreeItemLabelInput`** — adopt on the rename input, or leave it (core excludes inputs)? (§2)
 
 **Parked with their sections:**
 
