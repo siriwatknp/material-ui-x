@@ -19,7 +19,7 @@ Exports: `applyInsetFocusVisible`, `outsetFocusRing`, `applyChildrenFocusVisible
 
 **All three in-scope packages are done.** Pickers ✅ (§1, `ClockWrapper` included). Tree View ✅ (§2), which
 settled the roving-tabindex question. Data Grid ✅ — cell ring bridged through the grid's tokens (§3a) and
-the three premium buttons wired (§3b). Remaining: `TreeItemLabelInput` and the deferred Charts work.
+the three premium buttons wired (§3b). Remaining: re-check four insets that were never measured (see below), and the deferred Charts work.
 
 **In scope:** 26 rows — Pickers 9 (§1), Tree View 3 (§2), Data Grid 14 (§3). Everything else is deferred.
 Of the Pickers 9, only 7 are work: 4 already wired by core and needing verification, 3 genuine gaps.
@@ -237,11 +237,11 @@ tree is routinely dropped into a scrollable panel, which is why core insets `Lis
 Verified: unset → no ring rule at all; set → root `li` stays `outline: none` (subtree not enclosed) and the
 content row gets `solid 2px / offset -2px` alongside its `[data-focused]` background.
 
-| ☑   | Slot                         | Location                                           | Outcome                                                                                                                                                                                                                                                                                                                                                                   |
-| --- | ---------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ☑   | `MuiTreeItem` / `Content`    | `src/TreeItem/TreeItem.tsx`                        | Ring added on `.root:focus-visible > &`, inset. `[data-focused]` background untouched.                                                                                                                                                                                                                                                                                    |
-| ☑   | `MuiTreeItem` / `Root`       | `src/TreeItem/TreeItem.tsx:35`                     | `outline: 0` **kept deliberately** — it suppresses the browser default on the `li`, which would otherwise enclose the subtree. Not a bug.                                                                                                                                                                                                                                 |
-| ☐   | `MuiTreeItem` / `LabelInput` | `src/TreeItemLabelInput/TreeItemLabelInput.tsx:17` | **Left alone, open question.** `'&:focus': { outline: '1px solid primary.main' }` on the rename `<input>`. Adopting means either keeping `:focus` (so a mouse click also draws the "keyboard" ring — semantically wrong) or switching to `:focus-visible` (a behaviour change). Core deliberately excludes inputs from `focusVisible` (§1c), which argues for leaving it. |
+| ☑   | Slot                         | Location                                        | Outcome                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| --- | ---------------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ☑   | `MuiTreeItem` / `Content`    | `src/TreeItem/TreeItem.tsx`                     | Ring added on `.root:focus-visible > &`, inset. `[data-focused]` background untouched.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ☑   | `MuiTreeItem` / `Root`       | `src/TreeItem/TreeItem.tsx:35`                  | `outline: 0` **kept deliberately** — it suppresses the browser default on the `li`, which would otherwise enclose the subtree. Not a bug.                                                                                                                                                                                                                                                                                                                                                     |
+| ☑   | `MuiTreeItem` / `LabelInput` | `src/TreeItemLabelInput/TreeItemLabelInput.tsx` | **Done.** Core leaves its own `Input`/`TextField` out of `focusVisible` because a field signals focus with its border — but this is X's own `styled('input')` drawing a real 1px ring, so that precedent does not transfer and the theme should reach it. Kept on **`:focus`**, not `:focus-visible`: the input is only mounted while renaming and is focused programmatically, so `:focus-visible` may not match a mouse-initiated rename and would drop the ring exactly when it is needed. |
 
 **This unblocks §3a.** Roving tabindex does not force a component off `theme.focusVisible`; the question is
 only _which element_ carries the ring. Data Grid's cell ring is a separate matter — it is `:focus`, not
@@ -455,7 +455,7 @@ on focus because the chevron clip eats the outline. `applyInsetFocusVisible` onl
 
 4. ~~**§3b — three premium buttons**~~ ✅ Done.
 5. ~~**`ClockWrapper`**~~ ✅ Done — box fixed with percentage sizing, ring outset (§1b).
-6. **`TreeItemLabelInput`** — adopt on the rename input, or leave it (core excludes inputs)? (§2)
+6. ~~**`TreeItemLabelInput`**~~ ✅ Done — adopted on `:focus`; core's input exclusion does not apply to X's own `styled('input')` (§2).
 
 **Parked with their sections:**
 
